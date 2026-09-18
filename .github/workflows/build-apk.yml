@@ -1,0 +1,209 @@
+name: Build PPSSPP Android APK
+
+on:
+  schedule:
+    # Cheap when master is unchanged (API check only).
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even if this commit already has a release
+        type: boolean
+        default: false
+
+concurrency:
+  group: ppsspp-nightly-apk
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPO: hrydgard/ppsspp
+  KEEP_RELEASES: "3"
+
+jobs:
+  build:
+    name: normalOptimized APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m"
+
+    steps:
+      - name: Latest upstream master
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA=$(gh api "repos/${UPSTREAM_REPO}/commits/master" --jq .sha)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "Upstream ${UPSTREAM_REPO}@${SHA}"
+
+      - name: Skip if this commit was already published
+        id: skip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force || false }}
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.upstream.outputs.sha }}"
+          if [ "${FORCE}" = "true" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Force rebuild requested"
+            exit 0
+          fi
+          if gh release list --limit 20 --json body --jq '.[].body' | grep -F "$SHA" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Already published ${SHA}"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android/sdk/ndk \
+            /opt/ghc \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      - name: Check out PPSSPP
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/checkout@v5
+        with:
+          repository: hrydgard/ppsspp
+          ref: ${{ steps.upstream.outputs.sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          submodules: recursive
+          path: ppsspp
+
+      - name: Ensure version tags exist
+        if: steps.skip.outputs.skip != 'true'
+        working-directory: ppsspp
+        run: |
+          set -euo pipefail
+          if [ "$(git tag -l 'v[0-9]*' | wc -l | tr -d ' ')" = "0" ]; then
+            git fetch --no-recurse-submodules --tags --force "https://github.com/${UPSTREAM_REPO}.git"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        if: steps.skip.outputs.skip != 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Version metadata
+        if: steps.skip.outputs.skip != 'true'
+        id: ver
+        working-directory: ppsspp
+        run: |
+          set -euo pipefail
+          DESC=$(git describe --tags --match 'v*' --always)
+          TAG=$(git describe --tags --match 'v*' --abbrev=0)
+          COUNT=$(git rev-list "${TAG}..HEAD" --count)
+          RAW="${TAG#v}"
+          MAJOR=$(echo "$RAW" | cut -d. -f1)
+          MINOR=$(echo "$RAW" | cut -d. -f2)
+          PATCH=$(echo "$RAW" | cut -d. -f3)
+          MAJOR=${MAJOR:-0}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          MAJOR=${MAJOR//[^0-9]/}
+          MINOR=${MINOR//[^0-9]/}
+          PATCH=${PATCH//[^0-9]/}
+          CODE=$(( ${MAJOR:-0} * 100000000 + ${MINOR:-0} * 1000000 + ${PATCH:-0} * 10000 + COUNT ))
+          SAFE_TAG=$(echo "$DESC" | tr '/ ' '--')
+          echo "desc=${DESC}" >> "$GITHUB_OUTPUT"
+          echo "tag=${SAFE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "Version ${DESC} (${CODE})"
+
+      - name: Assemble normalOptimized APK
+        if: steps.skip.outputs.skip != 'true'
+        working-directory: ppsspp
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew assembleNormalOptimized --stacktrace \
+            -PANDROID_VERSION_NAME="${{ steps.ver.outputs.desc }}" \
+            -PANDROID_VERSION_CODE="${{ steps.ver.outputs.code }}"
+
+      - name: Package APK
+        if: steps.skip.outputs.skip != 'true'
+        id: apk
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK=$(find ppsspp -type f -name '*.apk' | grep -E 'normal/.*/optimized|normal-optimized|NormalOptimized' | head -n 1 || true)
+          if [ -z "$APK" ]; then
+            APK=$(find ppsspp -type f -name '*.apk' | head -n 1 || true)
+          fi
+          if [ -z "$APK" ]; then
+            echo "No APK produced" >&2
+            find ppsspp -name '*.apk' -print || true
+            exit 1
+          fi
+          NAME="ppsspp_${{ steps.ver.outputs.desc }}.apk"
+          cp -v "$APK" "dist/${NAME}"
+          echo "file=dist/${NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh "dist/${NAME}"
+
+      - name: Publish GitHub Release
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          SHA="${{ steps.upstream.outputs.sha }}"
+          DESC="${{ steps.ver.outputs.desc }}"
+          BODY=$(cat <<EOF
+          Unofficial Android APK built from [${UPSTREAM_REPO}@${SHA:0:12}](https://github.com/${UPSTREAM_REPO}/commit/${SHA}).
+
+          - Version: \`${DESC}\`
+          - Variant: \`normalOptimized\`
+          - Upstream: \`${SHA}\`
+
+          Signed with PPSSPP's in-tree **debug keystore**, not the official PPSSPP key.
+          Uninstall official / Play Store / Uptodown PPSSPP before installing.
+
+          Source: https://github.com/${UPSTREAM_REPO}
+          EOF
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes
+          fi
+          gh release create "$TAG" \
+            --prerelease \
+            --title "PPSSPP ${DESC}" \
+            --notes "$BODY" \
+            "${{ steps.apk.outputs.file }}"
+
+      - name: Drop old releases
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mapfile -t TAGS < <(gh release list --limit 20 --json tagName,isPrerelease,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[] | select(.isPrerelease) | .tagName')
+          KEEP="${KEEP_RELEASES}"
+          for i in "${!TAGS[@]}"; do
+            if [ "$i" -ge "$KEEP" ]; then
+              echo "Deleting old release ${TAGS[$i]}"
+              gh release delete "${TAGS[$i]}" --yes --cleanup-tag || true
+            fi
+          done

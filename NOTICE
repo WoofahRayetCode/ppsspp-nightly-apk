@@ -1,0 +1,11 @@
+This repository only contains CI scripts that build unmodified source from
+https://github.com/hrydgard/ppsspp
+
+PPSSPP is Copyright (c) Henrik Rydgård and contributors, licensed under
+GPL-2.0-or-later. Corresponding source for each APK is the git commit named
+in that GitHub Release.
+
+These APKs are unofficial. They are signed with PPSSPP's in-tree debug
+keystore, not the official PPSSPP / Play Store / buildbot key. Android will
+not update an official install with these builds (or the reverse) without
+uninstalling first.

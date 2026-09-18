@@ -1,0 +1,6 @@
+/ppsspp/
+/dist/
+*.apk
+*.apk.idsig
+.idea/
+.DS_Store

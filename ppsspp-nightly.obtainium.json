@@ -1,0 +1,13 @@
+[
+  {
+    "id": "org.ppsspp.ppsspp",
+    "url": "https://github.com/WoofahRayetCode/ppsspp-nightly-apk",
+    "author": "hrydgard",
+    "name": "PPSSPP (Nightly)",
+    "preferredApkIndex": 0,
+    "additionalSettings": "{\"includePrereleases\":true,\"fallbackToOlderReleases\":true,\"filterReleaseTitlesByRegEx\":\"\",\"filterReleaseNotesByRegEx\":\"\",\"verifyLatestTag\":false,\"sortMethodChoice\":\"date\",\"useLatestAssetDateAsReleaseDate\":true,\"releaseTitleAsVersion\":false,\"github-creds\":\"\",\"GHReqPrefix\":\"\",\"trackOnly\":false,\"versionExtractionRegEx\":\"\",\"matchGroupToUse\":\"\",\"versionDetection\":true,\"releaseDateAsVersion\":false,\"useVersionCodeAsOSVersion\":false,\"apkFilterRegEx\":\"^ppsspp_v.*\\\\.apk$\",\"invertAPKFilter\":false,\"autoApkFilterByArch\":true,\"appName\":\"PPSSPP (Nightly)\",\"appAuthor\":\"hrydgard\",\"shizukuPretendToBeGooglePlay\":false,\"allowInsecure\":false,\"exemptFromBackgroundUpdates\":false,\"skipUpdateNotifications\":false,\"about\":\"Unofficial Android APKs built from hrydgard/ppsspp master. Signed with the in-tree debug keystore, not the official PPSSPP key. Uninstall official/Uptodown PPSSPP before installing.\",\"refreshBeforeDownload\":false,\"includeZips\":false,\"zippedApkFilterRegEx\":\"\"}",
+    "categories": ["Emulator"],
+    "allowIdChange": false,
+    "overrideSource": "GitHub"
+  }
+]

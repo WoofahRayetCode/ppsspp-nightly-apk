@@ -7,7 +7,7 @@ This is **not** an official PPSSPP project. The APKs are GPL-2.0-or-later PPSSPP
 ## Obtainium
 
 1. Uninstall official / Play Store / Uptodown PPSSPP first (saves stay if you use a custom memstick folder). These builds use the in-tree **debug keystore**, so Android will refuse to update over an official signature.
-2. Import [`obtainium/ppsspp-nightly.obtainium.json`](obtainium/ppsspp-nightly.obtainium.json), or add:
+2. Import [`ppsspp-nightly.obtainium.json`](ppsspp-nightly.obtainium.json), or add:
 
    `https://github.com/WoofahRayetCode/ppsspp-nightly-apk`
 

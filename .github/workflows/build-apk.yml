@@ -56,7 +56,7 @@ jobs:
             echo "Force rebuild requested"
             exit 0
           fi
-          if gh release list --limit 20 --json body --jq '.[].body' | grep -F "$SHA" >/dev/null; then
+          if gh api "repos/${GH_REPO}/releases?per_page=20" --jq '.[].body' | grep -F "$SHA" >/dev/null; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Already published ${SHA}"
           else

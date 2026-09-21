@@ -1,7 +1,7 @@
 [
   {
     "id": "org.ppsspp.ppsspp",
-    "url": "https://github.com/WoofahRayetCode/ppsspp-nightly-apk/releases",
+    "url": "https://github.com/WoofahRayetCode/ppsspp-nightly-apk",
     "author": "hrydgard",
     "name": "PPSSPP (Nightly)",
     "preferredApkIndex": 0,

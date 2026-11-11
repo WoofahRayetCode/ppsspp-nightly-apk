@@ -13,7 +13,7 @@ on:
 
 concurrency:
   group: ppsspp-nightly-apk
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -137,10 +137,46 @@ jobs:
         working-directory: ppsspp
         run: |
           set -euo pipefail
+          # Configure the downloaded upstream checkout without changing its Gradle version.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('gradle/wrapper/gradle-wrapper.properties')
+          lines = path.read_text().splitlines()
+          lines = [line for line in lines if not re.match(r'^\s*networkTimeout\s*[=:]', line)]
+          path.write_text('\n'.join(lines) + '\nnetworkTimeout=60000\n')
+          PY
           chmod +x gradlew
-          ./gradlew assembleNormalOptimized --stacktrace \
-            -PANDROID_VERSION_NAME="${{ steps.ver.outputs.desc }}" \
-            -PANDROID_VERSION_CODE="${{ steps.ver.outputs.code }}"
+          for attempt in 1 2 3; do
+            log="${RUNNER_TEMP}/ppsspp-assemble-${attempt}.log"
+            set +e
+            ./gradlew assembleNormalOptimized --stacktrace \
+              -PANDROID_VERSION_NAME="${{ steps.ver.outputs.desc }}" \
+              -PANDROID_VERSION_CODE="${{ steps.ver.outputs.code }}" 2>&1 | tee "$log"
+            statuses=("${PIPESTATUS[@]}")
+            set -e
+            status=${statuses[0]}
+            if [ "$status" -eq 0 ]; then
+              exit "${statuses[1]}"
+            fi
+            # Retry dependency access failures only; compiler errors must fail immediately.
+            if grep -Eq '(^|[[:space:]])(error:|e: )|Compilation error|Compilation failed' "$log" ||
+               ! grep -Eiq 'SocketTimeoutException|Downloading from .* failed: timeout|Could not (resolve|download|get resource|GET|HEAD)|could not resolve plugin artifact' "$log" ||
+               [ "$attempt" -eq 3 ]; then
+              exit "$status"
+            fi
+            echo "::warning::Dependency access failed (attempt ${attempt}/3); retrying in $((attempt * 15)) seconds"
+            sleep "$((attempt * 15))"
+          done
+
+      - name: Upload assembly logs
+        if: always() && steps.skip.outputs.skip != 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: assembly-logs
+          path: ${{ runner.temp }}/ppsspp-assemble-*.log
+          if-no-files-found: ignore
 
       - name: Package APK
         if: steps.skip.outputs.skip != 'true'
